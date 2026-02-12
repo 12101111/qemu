@@ -134,3 +134,8 @@ config MIPS_BOSTON_AIA
     default y
     select PCI_EXPRESS
     select PCI_EXPRESS_XILINX
+
+config RISCV_WA2X
+    bool
+    default y
+    depends on RISCV32 || RISCV64
