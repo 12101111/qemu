@@ -162,3 +162,8 @@ config K230
     select SERIAL_MM
     select UNIMP
     select K230_WDT
+
+config RISCV_WA2X
+    bool
+    default y
+    depends on RISCV32 || RISCV64
