@@ -2294,6 +2294,17 @@ if not get_option('libdw').auto() or \
                        required: get_option('libdw'))
 endif
 
+libwa2x = not_found
+if get_option('wa2x').allowed() and have_system
+  libwa2x = cc.find_library('wa2x_qemu_syscon', required: get_option('wa2x'))
+
+  if not libwa2x.found()
+    if get_option('wa2x').enabled()
+      error('wa2x not found')
+    endif
+  endif
+endif
+
 #################
 # config-host.h #
 #################
@@ -4985,6 +4996,7 @@ summary_info += {'libudev':           libudev}
 summary_info += {'FUSE lseek':        fuse_lseek.found()}
 summary_info += {'selinux':           selinux}
 summary_info += {'libdw':             libdw}
+summary_info += {'wa2x':              libwa2x.found()}
 if host_os == 'freebsd'
   summary_info += {'libinotify-kqueue': inotify}
 endif
