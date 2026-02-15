@@ -36,7 +36,7 @@ static const MemMapEntry wa2x_memmap[] = {
     [WA2X_RAM] = {0x80400000, 0x0},
     [WA2X_SYSCON_MMIO] = {0x10000000, 0x1000},
     [WA2X_SYSCON_BUFFER] = {0x10001000, 0x1000},
-    [WA2X_MODULE] = {0x20000000, 0x10000000},
+    [WA2X_MODULE] = {0x40000000, 0x10000000},
     [WA2X_AOT] = {0x50000000, 0x8000000},
     [WA2X_MROM] = {0x1000, 0x1000},
 };

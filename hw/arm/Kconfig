@@ -732,3 +732,8 @@ config ARM_WA2X
     bool
     default y
     depends on TCG && ARM
+
+config ARM_WA2XM
+    bool
+    default y
+    depends on ARM_V7M
