@@ -80,6 +80,10 @@ static void wa2x_machine_state_init(MachineState *machine) {
                          wa2x_memmap[WA2X_ROM].size, &error_fatal);
   memory_region_add_subregion(system_memory, wa2x_memmap[WA2X_ROM].base,
                               &s->rom_mem);
+  /* alias ROM to 0 */
+  memory_region_init_alias(&s->rom_alias, NULL, "arm.wa2x.brom", &s->rom_mem, 0,
+                           wa2x_memmap[WA2X_ROM].size);
+  memory_region_add_subregion(system_memory, 0x0, &s->rom_alias);
 
   /* load firmware to ROM
    * In our AArch64 memory layout, the boot addr is fixed to WA2X_ROM

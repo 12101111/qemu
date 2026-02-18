@@ -35,6 +35,7 @@ typedef struct Wa2xMachineState {
     ARMCPU cpu;
     Wa2xSysconState syscon;
     MemoryRegion rom_mem;
+    MemoryRegion rom_alias;
     const MemMapEntry *memmap;
     char* opt;
 } Wa2xMachineState;
