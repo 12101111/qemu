@@ -43,10 +43,9 @@ typedef struct Wa2xMachineState {
 enum {
     WA2X_ROM,
     WA2X_RAM,
-    WA2X_SYSCON_MMIO,
     WA2X_SYSCON_BUFFER,
+    WA2X_SYSCON_MMIO,
     WA2X_MODULE,
-    WA2X_AOT,
 };
 
 #endif

@@ -40,10 +40,9 @@
 static const MemMapEntry wa2x_memmap[] = {
     [WA2X_ROM] = {0x80000000, 0x400000},
     [WA2X_RAM] = {0x80400000, 0x0},
-    [WA2X_SYSCON_MMIO] = {0x10000000, 0x1000},
-    [WA2X_SYSCON_BUFFER] = {0x10001000, 0x1000},
-    [WA2X_MODULE] = {0x40000000, 0x10000000},
-    [WA2X_AOT] = {0x50000000, 0x8000000},
+    [WA2X_SYSCON_BUFFER] = {0x50010000, 0x10000},
+    [WA2X_SYSCON_MMIO] = {0x50000000, 0x10000},
+    [WA2X_MODULE] = {0x58000000, 0x4000000},
 };
 
 static struct arm_boot_info bootinfo;
@@ -130,12 +129,6 @@ static void wa2x_machine_state_init(MachineState *machine) {
   memory_region_add_subregion(
       system_memory, wa2x_memmap[WA2X_SYSCON_BUFFER].base, &s->syscon.buffer);
 
-  /* register aot memory */
-  memory_region_init_ram(&s->syscon.aot, NULL, "arm.wa2x.aot",
-                         wa2x_memmap[WA2X_AOT].size, &error_fatal);
-  memory_region_add_subregion(system_memory, wa2x_memmap[WA2X_AOT].base,
-                              &s->syscon.aot);
-
   /* register module memory */
   memory_region_init_ram(&s->syscon.module, NULL, "arm.wa2x.module",
                          wa2x_memmap[WA2X_MODULE].size, &error_fatal);
@@ -176,7 +169,7 @@ static void wa2x_machine_class_init(ObjectClass *klass, const void *data) {
   mc->default_cpu_type = ARM_CPU_TYPE_NAME("cortex-a53");
   mc->max_cpus = 1;
   mc->default_ram_id = "arm.wa2x.ram";
-  mc->default_ram_size = 192 * MiB;
+  mc->default_ram_size = 252 * MiB;
   object_class_property_add_str(klass, "opt", wa2x_machine_opt_get,
                                 wa2x_machine_opt_set);
 }
