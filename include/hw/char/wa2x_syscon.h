@@ -41,7 +41,6 @@ typedef struct {
   MemoryRegion mmio;
   MemoryRegion buffer;
   MemoryRegion module;
-  MemoryRegion aot;
   runner_t runner;
   Wa2xSysconConf conf;
 } Wa2xSysconState;
