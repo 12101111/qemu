@@ -144,12 +144,13 @@ static void wa2x_machine_opt_set(Object *obj, const char *val, Error **errp) {
   s->opt = g_strdup(val);
 }
 
-// Our memmap is conflict with ARM system memory map
-// and cortex-m0 don't support MPU, so it's not supported
-static const char *const valid_cpu_types[] = {
-    ARM_CPU_TYPE_NAME("cortex-m3"),  ARM_CPU_TYPE_NAME("cortex-m4"),
-    ARM_CPU_TYPE_NAME("cortex-m7"),  ARM_CPU_TYPE_NAME("cortex-m33"),
-    ARM_CPU_TYPE_NAME("cortex-m55"), NULL};
+static const char *const valid_cpu_types[] = {ARM_CPU_TYPE_NAME("cortex-m0"),
+                                              ARM_CPU_TYPE_NAME("cortex-m3"),
+                                              ARM_CPU_TYPE_NAME("cortex-m4"),
+                                              ARM_CPU_TYPE_NAME("cortex-m7"),
+                                              ARM_CPU_TYPE_NAME("cortex-m33"),
+                                              ARM_CPU_TYPE_NAME("cortex-m55"),
+                                              NULL};
 
 static void wa2x_machine_class_init(ObjectClass *klass, const void *data) {
   MachineClass *mc = MACHINE_CLASS(klass);
