@@ -26,13 +26,6 @@
 #define TYPE_WA2X_SYSCON "wa2x-syscon"
 #define WA2X_SYSCON(obj) OBJECT_CHECK(Wa2xSysconState, (obj), TYPE_WA2X_SYSCON)
 
-typedef struct Wa2xSysconConf {
-  char *runner;
-  char *opt;
-} Wa2xSysconConf;
-
-typedef void *runner_t;
-
 typedef struct {
   /* <private> */
   SysBusDevice parent_obj;
@@ -41,23 +34,22 @@ typedef struct {
   MemoryRegion mmio;
   MemoryRegion buffer;
   MemoryRegion module;
-  runner_t runner;
-  Wa2xSysconConf conf;
 } Wa2xSysconState;
 
-extern runner_t wa2x_runner_new(Wa2xSysconState* syscon, const char* runner, const char* args);
+extern bool wa2x_runner_new(Wa2xSysconState *syscon);
 
-extern void wa2x_runner_drop(runner_t);
+extern void wa2x_runner_drop(void);
 
-extern void wa2x_runner_read(runner_t, uint64_t addr, size_t len,
-                             uint8_t *bytes);
+extern void wa2x_runner_read(uint64_t addr, size_t len, uint8_t *bytes);
 
-extern void wa2x_runner_write(runner_t, uint64_t addr, size_t len,
+extern void wa2x_runner_write(uint64_t addr, size_t len, const uint8_t *bytes);
+
+void wa2x_syscon_exit_code(Wa2xSysconState *syscon, uint16_t code);
+void wa2x_syscon_write_buffer(Wa2xSysconState *syscon, size_t len,
                               const uint8_t *bytes);
-
-void wa2x_syscon_exit_code(Wa2xSysconState* syscon, uint16_t code);
-void wa2x_syscon_write_buffer(Wa2xSysconState* syscon, size_t len, const uint8_t *bytes);
-void wa2x_syscon_read_buffer(Wa2xSysconState* syscon, size_t len, uint8_t *bytes);
-void wa2x_syscon_write_module(Wa2xSysconState* syscon, size_t len, const uint8_t *bytes);
+void wa2x_syscon_read_buffer(Wa2xSysconState *syscon, size_t len,
+                             uint8_t *bytes);
+void wa2x_syscon_write_module(Wa2xSysconState *syscon, size_t len,
+                              const uint8_t *bytes);
 
 #endif /* HW_WA2X_SYSCON_H */
