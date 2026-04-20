@@ -278,9 +278,6 @@ static void wa2x_machine_state_init(MachineState *machine) {
     exit(EXIT_FAILURE);
   }
 
-  qdev_prop_set_string(DEVICE(&(s->syscon)), "runner", machine->firmware);
-  if (s->opt)
-    qdev_prop_set_string(DEVICE(&(s->syscon)), "opt", s->opt);
   if (!sysbus_realize(SYS_BUS_DEVICE(&s->syscon), &error_fatal)) {
     return;
   }
@@ -331,22 +328,6 @@ static void wa2x_machine_reset(MachineState *machine, ResetType type) {
   }
 }
 
-static char *wa2x_machine_opt_get(Object *obj, Error **errp) {
-  Wa2xMachineState *s = X86_WA2X_MACHINE(obj);
-  if (s->opt) {
-    return g_strdup(s->opt);
-  } else {
-    return g_strdup("");
-  }
-}
-
-static void wa2x_machine_opt_set(Object *obj, const char *val, Error **errp) {
-  Wa2xMachineState *s = X86_WA2X_MACHINE(obj);
-  if (s->opt)
-    g_free(s->opt);
-  s->opt = g_strdup(val);
-}
-
 static void wa2x_machine_class_init(ObjectClass *klass, const void *data) {
   MachineClass *mc = MACHINE_CLASS(klass);
   mc->desc = "Wa2x test runner";
@@ -355,8 +336,6 @@ static void wa2x_machine_class_init(ObjectClass *klass, const void *data) {
   mc->max_cpus = 1;
   mc->default_ram_id = "x86.wa2x.ram";
   mc->default_ram_size = 252 * MiB;
-  object_class_property_add_str(klass, "opt", wa2x_machine_opt_get,
-                                wa2x_machine_opt_set);
   mc->reset = wa2x_machine_reset;
 }
 
