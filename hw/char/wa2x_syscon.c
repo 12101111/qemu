@@ -25,16 +25,14 @@
 #include <stdint.h>
 
 static uint64_t wa2x_syscon_read(void *opaque, hwaddr addr, unsigned size) {
-  Wa2xSysconState *s = opaque;
   uint64_t value = 0;
-  wa2x_runner_read(s->runner, addr, size, (uint8_t *)&value);
+  wa2x_runner_read(addr, size, (uint8_t *)&value);
   return value;
 }
 
 static void wa2x_syscon_write(void *opaque, hwaddr addr, uint64_t data,
                               unsigned size) {
-  Wa2xSysconState *s = opaque;
-  wa2x_runner_write(s->runner, addr, size, (uint8_t *)&data);
+  wa2x_runner_write(addr, size, (uint8_t *)&data);
 }
 
 static const MemoryRegionOps wa2x_syscon_ops = {
@@ -51,21 +49,13 @@ static void wa2x_syscon_reset(DeviceState *dev) {
 
 static void wa2x_syscon_realize(DeviceState *dev, Error **errp) {
   Wa2xSysconState *s = WA2X_SYSCON(dev);
-  runner_t runner =
-      wa2x_runner_new(s, s->conf.runner, s->conf.opt);
-  if (!runner) {
+  if (!wa2x_runner_new(s)) {
     error_setg(errp, "can't create runner");
     return;
   }
-  s->runner = runner;
 }
 
-static void wa2x_syscon_unrealize(DeviceState *dev) {
-  Wa2xSysconState *s = WA2X_SYSCON(dev);
-  if (s->runner) {
-    wa2x_runner_drop(s->runner);
-  }
-}
+static void wa2x_syscon_unrealize(DeviceState *dev) { wa2x_runner_drop(); }
 
 static void wa2x_syscon_instance_init(Object *obj) {
   Wa2xSysconState *s = WA2X_SYSCON(obj);
@@ -74,18 +64,12 @@ static void wa2x_syscon_instance_init(Object *obj) {
   sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->mmio);
 }
 
-static const Property wa2x_syscon_properties[] = {
-    DEFINE_PROP_STRING("runner", Wa2xSysconState, conf.runner),
-    DEFINE_PROP_STRING("opt", Wa2xSysconState, conf.opt),
-};
-
 static void wa2x_syscon_class_init(ObjectClass *klass, const void *data) {
   DeviceClass *dc = DEVICE_CLASS(klass);
   dc->realize = wa2x_syscon_realize;
   dc->unrealize = wa2x_syscon_unrealize;
   dc->desc = "Wa2x syscon";
   device_class_set_legacy_reset(dc, wa2x_syscon_reset);
-  device_class_set_props(dc, wa2x_syscon_properties);
   set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }
 
@@ -101,10 +85,6 @@ static void wa2x_syscon_register_types(void) {
   type_register_static(&wa2x_syscon_info);
 }
 type_init(wa2x_syscon_register_types);
-
-void wa2x_syscon_exit_code(Wa2xSysconState *syscon, uint16_t code) {
-  exit(code);
-}
 
 void wa2x_syscon_write_buffer(Wa2xSysconState *syscon, size_t len,
                               const uint8_t *bytes) {
