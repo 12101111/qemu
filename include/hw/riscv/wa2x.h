@@ -37,7 +37,6 @@ typedef struct Wa2xMachineState {
     MemoryRegion rom_mem;
     MemoryRegion mask_rom;
     const MemMapEntry *memmap;
-    char* opt;
 } Wa2xMachineState;
 
 enum {
