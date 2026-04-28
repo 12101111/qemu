@@ -26,6 +26,31 @@
 #define TYPE_WA2X_SYSCON "wa2x-syscon"
 #define WA2X_SYSCON(obj) OBJECT_CHECK(Wa2xSysconState, (obj), TYPE_WA2X_SYSCON)
 
+#define SYSCON_ADDRESS 0xA0000000
+#define SYSCON_SIZE 0x10000
+#define BUFFER_ADDRESS 0xA0010000
+#define BUFFER_SIZE 0x10000
+#define MODULE_ADDRESS 0xA8000000
+#define MODULE_SIZE 0x4000000
+#define WASM_AOT_BEGIN 0x60000000
+#define WASM_AOT_SIZE 0x4000000
+#define ROM_ADDRESS 0x80000000
+#define ROM_SIZE 0x400000
+#define RAM_ADDRESS 0x80400000
+#define WASM_MEMORY_BEGIN 0x81000000
+#define WASM_MEMORY_SIZE 0xB000000
+
+enum {
+    WA2X_SYSCON_MMIO,
+    WA2X_SYSCON_BUFFER,
+    WA2X_MODULE,
+    WA2X_AOT,
+    WA2X_ROM,
+    WA2X_RAM,
+    WA2X_LIME,
+    WA2X_MROM,
+};
+
 typedef struct {
   /* <private> */
   SysBusDevice parent_obj;
@@ -34,6 +59,8 @@ typedef struct {
   MemoryRegion mmio;
   MemoryRegion buffer;
   MemoryRegion module;
+  MemoryRegion aot;
+  MemoryRegion lime;
 } Wa2xSysconState;
 
 extern bool wa2x_runner_new(Wa2xSysconState *syscon);
