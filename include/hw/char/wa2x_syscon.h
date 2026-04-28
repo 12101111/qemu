@@ -21,7 +21,7 @@
 
 #include "qemu/osdep.h"
 
-#include "hw/sysbus.h"
+#include "hw/core/sysbus.h"
 
 #define TYPE_WA2X_SYSCON "wa2x-syscon"
 #define WA2X_SYSCON(obj) OBJECT_CHECK(Wa2xSysconState, (obj), TYPE_WA2X_SYSCON)
