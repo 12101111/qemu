@@ -37,11 +37,13 @@
 #include <stdint.h>
 
 static const MemMapEntry wa2x_memmap[] = {
-    [WA2X_ROM] = {0x80000000, 0x400000},
-    [WA2X_RAM] = {0x80400000, 0x0},
-    [WA2X_SYSCON_BUFFER] = {0x50010000, 0x10000},
-    [WA2X_SYSCON_MMIO] = {0x50000000, 0x10000},
-    [WA2X_MODULE] = {0x58000000, 0x4000000},
+    [WA2X_SYSCON_MMIO] = {SYSCON_ADDRESS, SYSCON_SIZE},
+    [WA2X_SYSCON_BUFFER] = {BUFFER_ADDRESS, BUFFER_SIZE},
+    [WA2X_MODULE] = {MODULE_ADDRESS, MODULE_SIZE},
+    [WA2X_AOT] = {WASM_AOT_BEGIN, WASM_AOT_SIZE},
+    [WA2X_ROM] = {ROM_ADDRESS, ROM_SIZE},
+    [WA2X_RAM] = {RAM_ADDRESS, 0x0},
+    [WA2X_LIME] = {WASM_MEMORY_BEGIN, WASM_MEMORY_SIZE},
     [WA2X_MROM] = {0x10000, 0x10000},
 };
 
@@ -64,19 +66,10 @@ static const MemMapEntry wa2x_memmap[] = {
 #define PT0_PADDR (PAGE_TABLE_ADDRESS + 0x5000)
 #define PT1_PADDR (PAGE_TABLE_ADDRESS + 0x6000)
 
-#define SYSCON_ADDRESS wa2x_memmap[WA2X_SYSCON_MMIO].base
-#define SYSCON_END                                                             \
-  (wa2x_memmap[WA2X_SYSCON_MMIO].base + wa2x_memmap[WA2X_SYSCON_MMIO].size)
-#define BUFFER_ADDRESS wa2x_memmap[WA2X_SYSCON_BUFFER].base
-#define BUFFER_END                                                             \
-  (wa2x_memmap[WA2X_SYSCON_BUFFER].base + wa2x_memmap[WA2X_SYSCON_BUFFER].size)
-#define MODULE_ADDRESS wa2x_memmap[WA2X_MODULE].base
-#define MODULE_END                                                             \
-  (wa2x_memmap[WA2X_MODULE].base + wa2x_memmap[WA2X_MODULE].size)
-#define RAM_ADDRESS wa2x_memmap[WA2X_RAM].base
-#define DEFAULT_RAM_SIZE 0x100000
-#define LIME_BEGIN 0x81000000
-#define WASM_AOT_END 0x90000000
+#define SYSCON_END (SYSCON_ADDRESS + SYSCON_SIZE)
+#define BUFFER_END (BUFFER_ADDRESS + BUFFER_SIZE)
+#define MODULE_END (MODULE_ADDRESS + MODULE_SIZE)
+#define DEFAULT_RAM_SIZE 0x800000
 
 static uint64_t map_descriptor(uint32_t base, uint32_t limit, uint32_t type,
                                int present, int dpl, int s, int db, int l,
@@ -125,14 +118,11 @@ static void wa2x_x86_bootrom_setup(MemoryRegion *boot_rom) {
   // 4. PD1 (1-2GB)
   const uint64_t PD1_BASE = 0x40000000;
   const uint64_t PD1_BASE_INDEX = PD1_BASE / (2 * MB);
-  // 4a) index 0x200: PT1, 0x50000000-0x50020000 4KB page
-  const uint64_t PT1_INDEX = (SYSCON_ADDRESS - PD1_BASE) / (2 * MB);
-  mem[pd1_idx + PT1_INDEX] = PT1_PADDR | PTE_PRESENT | PTE_WRITABLE;
 
-  // 4b) index 0x280-0x2BF: 0x58000000-0x5C000000 2MB huge page RWX
-  const uint64_t MODULE_ENTRY_BEGIN = (MODULE_ADDRESS - PD1_BASE) / (2 * MB);
-  const uint64_t MODULE_ENTRY_END = (MODULE_END - PD1_BASE) / (2 * MB);
-  for (uint64_t idx = MODULE_ENTRY_BEGIN; idx < MODULE_ENTRY_END; idx++) {
+  // 4a) AOT: 0x60000000-0x64000000 2MB huge page RWX
+  const uint64_t AOT_ENTRY_BEGIN = (WASM_AOT_BEGIN - PD1_BASE) / (2 * MB);
+  const uint64_t AOT_ENTRY_END = AOT_ENTRY_BEGIN + WASM_AOT_SIZE / (2 * MB);
+  for (uint64_t idx = AOT_ENTRY_BEGIN; idx < AOT_ENTRY_END; idx++) {
     uint64_t phys = ((uint64_t)(idx + PD1_BASE_INDEX)) << 21;
     mem[pd1_idx + idx] = phys | PTE_PRESENT | PTE_WRITABLE | PTE_PS;
   }
@@ -140,26 +130,39 @@ static void wa2x_x86_bootrom_setup(MemoryRegion *boot_rom) {
   // 5. PD2 (2-3GB)
   const uint64_t PD2_BASE = 0x80000000;
   const uint64_t PD2_BASE_INDEX = PD2_BASE / (2 * MB);
+
   // 5a) index 0x400-0x401: 0x80000000-0x80400000 2MB huge page RX
   for (uint64_t idx = 0; idx <= 1; idx++) {
     uint64_t phys = ((uint64_t)(idx + PD2_BASE_INDEX)) << 21;
     mem[pd2_idx + idx] = phys | PTE_PRESENT | PTE_PS;
   }
 
-  // 5b) index 0x402～0x402: 0x80400000-0x80600000 2MB huge page RW
+  // 5b) index 0x402: 0x80400000-0x80600000 2MB huge page RW RAM
   const uint64_t RAM_ENTRY_BEGIN = (RAM_ADDRESS - PD2_BASE) / (2 * MB);
   const uint64_t RAM_ENTRY_END = RAM_ENTRY_BEGIN + 1;
   for (uint64_t idx = RAM_ENTRY_BEGIN; idx < RAM_ENTRY_END; idx++) {
     uint64_t phys = ((uint64_t)(idx + PD2_BASE_INDEX)) << 21;
-    mem[pd2_idx + idx] = phys | PTE_PRESENT | PTE_WRITABLE | PTE_PS;
+    mem[pd2_idx + idx] = phys | PTE_PRESENT | PTE_WRITABLE | PTE_PS | PTE_XD;
   }
 
-  // 5c) index 0x408～0x480: 0x81000000-0x90000000 2MB huge page RW
-  const uint64_t LIME_ENTRY_BEGIN = (LIME_BEGIN - PD2_BASE) / (2 * MB);
-  const uint64_t AOT_ENTRY_END = (WASM_AOT_END - PD2_BASE) / (2 * MB);
-  for (uint64_t idx = LIME_ENTRY_BEGIN; idx < AOT_ENTRY_END; idx++) {
+  // 5c) index 0x408-0x45F: 0x81000000-0x8C000000 2MB huge page RW (LIME)
+  const uint64_t LIME_ENTRY_BEGIN = (WASM_MEMORY_BEGIN - PD2_BASE) / (2 * MB);
+  const uint64_t LIME_ENTRY_END = LIME_ENTRY_BEGIN + WASM_MEMORY_SIZE / (2 * MB);
+  for (uint64_t idx = LIME_ENTRY_BEGIN; idx < LIME_ENTRY_END; idx++) {
     uint64_t phys = ((uint64_t)(idx + PD2_BASE_INDEX)) << 21;
-    mem[pd2_idx + idx] = phys | PTE_PRESENT | PTE_WRITABLE | PTE_PS;
+    mem[pd2_idx + idx] = phys | PTE_PRESENT | PTE_WRITABLE | PTE_PS | PTE_XD;
+  }
+
+  // 5d) index 0x500: PT1, 0xA0000000-0xA0020000 4KB page
+  const uint64_t PT1_PD_INDEX = (SYSCON_ADDRESS - PD2_BASE) / (2 * MB);
+  mem[pd2_idx + PT1_PD_INDEX] = PT1_PADDR | PTE_PRESENT | PTE_WRITABLE;
+
+  // 5e) index 0x540-0x55F: 0xA8000000-0xAC000000 2MB huge page RW (MODULE)
+  const uint64_t MODULE_ENTRY_BEGIN = (MODULE_ADDRESS - PD2_BASE) / (2 * MB);
+  const uint64_t MODULE_ENTRY_END = MODULE_ENTRY_BEGIN + MODULE_SIZE / (2 * MB);
+  for (uint64_t idx = MODULE_ENTRY_BEGIN; idx < MODULE_ENTRY_END; idx++) {
+    uint64_t phys = ((uint64_t)(idx + PD2_BASE_INDEX)) << 21;
+    mem[pd2_idx + idx] = phys | PTE_PRESENT | PTE_WRITABLE | PTE_PS | PTE_XD;
   }
 
   // 6. PT0 (0-2MB)
@@ -169,24 +172,23 @@ static void wa2x_x86_bootrom_setup(MemoryRegion *boot_rom) {
     mem[pt0_idx + pte_idx] = phys | PTE_PRESENT | PTE_WRITABLE | PTE_XD;
   }
 
-  // 7. PT1 (0x50000000-0x50200000)
-  const uint64_t PT1_BASE = 0x50000000;
+  // 7. PT1 (0xA0000000-0xA0020000)
+  const uint64_t PT1_BASE = SYSCON_ADDRESS;
   const uint64_t PT1_BASE_INDEX = PT1_BASE / 4096;
-  // 7a) index 0: 0x50000000-0x50001000
+
+  // 7a) index 0-15: 0xA0000000-0xA0010000
   const uint64_t SYSCON_ENTRY_BEGIN = (SYSCON_ADDRESS - PT1_BASE) / 4096;
-  const uint64_t SYSCON_ENTRY_END = (SYSCON_END - PT1_BASE) / 4096;
+  const uint64_t SYSCON_ENTRY_END = SYSCON_ENTRY_BEGIN + SYSCON_SIZE / 4096;
   for (uint64_t pte_idx = SYSCON_ENTRY_BEGIN; pte_idx < SYSCON_ENTRY_END;
        pte_idx++) {
     uint64_t phys = (pte_idx + PT1_BASE_INDEX) << 12;
     mem[pt1_idx + pte_idx] =
         phys | PTE_PRESENT | PTE_WRITABLE | PTE_PWT | PTE_PCD | PTE_XD;
   }
-  mem[pt1_idx + 0] = (uint64_t)SYSCON_ADDRESS | PTE_PRESENT | PTE_WRITABLE |
-                     PTE_PWT | PTE_PCD | PTE_XD;
 
-  // 7b) index 1: 0x50001000-0x50002000
+  // 7b) index 16-31: 0xA0010000-0xA0020000
   const uint64_t BUFFER_ENTRY_BEGIN = (BUFFER_ADDRESS - PT1_BASE) / 4096;
-  const uint64_t BUFFER_ENTRY_END = (BUFFER_END - PT1_BASE) / 4096;
+  const uint64_t BUFFER_ENTRY_END = BUFFER_ENTRY_BEGIN + BUFFER_SIZE / 4096;
   for (uint64_t pte_idx = BUFFER_ENTRY_BEGIN; pte_idx < BUFFER_ENTRY_END;
        pte_idx++) {
     uint64_t phys = (pte_idx + PT1_BASE_INDEX) << 12;
@@ -307,6 +309,18 @@ static void wa2x_machine_state_init(MachineState *machine) {
   memory_region_add_subregion(system_memory, wa2x_memmap[WA2X_MODULE].base,
                               &s->syscon.module);
 
+  /* register aot memory */
+  memory_region_init_ram(&s->syscon.aot, NULL, "x86.wa2x.aot",
+                         wa2x_memmap[WA2X_AOT].size, &error_fatal);
+  memory_region_add_subregion(system_memory, wa2x_memmap[WA2X_AOT].base,
+                              &s->syscon.aot);
+
+  /* register lime memory */
+  memory_region_init_ram(&s->syscon.lime, NULL, "x86.wa2x.lime",
+                         wa2x_memmap[WA2X_LIME].size, &error_fatal);
+  memory_region_add_subregion(system_memory, wa2x_memmap[WA2X_LIME].base,
+                              &s->syscon.lime);
+
   /* boot rom */
   memory_region_init_ram(&s->boot_rom, NULL, "x86.wa2x.bootrom",
                          wa2x_memmap[WA2X_MROM].size, &error_fatal);
@@ -335,7 +349,7 @@ static void wa2x_machine_class_init(ObjectClass *klass, const void *data) {
   mc->default_cpu_type = X86_CPU_TYPE_NAME("Nehalem");
   mc->max_cpus = 1;
   mc->default_ram_id = "x86.wa2x.ram";
-  mc->default_ram_size = 252 * MiB;
+  mc->default_ram_size = 8 * MiB;
   mc->reset = wa2x_machine_reset;
 }
 
