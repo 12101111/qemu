@@ -36,11 +36,13 @@
 #include "system/memory.h"
 
 static const MemMapEntry wa2x_memmap[] = {
-    [WA2X_ROM] = {0x80000000, 0x400000},
-    [WA2X_RAM] = {0x80400000, 0x0},
-    [WA2X_SYSCON_BUFFER] = {0x50010000, 0x10000},
-    [WA2X_SYSCON_MMIO] = {0x50000000, 0x10000},
-    [WA2X_MODULE] = {0x58000000, 0x4000000},
+    [WA2X_SYSCON_MMIO] = {SYSCON_ADDRESS, SYSCON_SIZE},
+    [WA2X_SYSCON_BUFFER] = {BUFFER_ADDRESS, BUFFER_SIZE},
+    [WA2X_MODULE] = {MODULE_ADDRESS, MODULE_SIZE},
+    [WA2X_AOT] = {WASM_AOT_BEGIN, WASM_AOT_SIZE},
+    [WA2X_ROM] = {ROM_ADDRESS, ROM_SIZE},
+    [WA2X_RAM] = {RAM_ADDRESS, 0x0},
+    [WA2X_LIME] = {WASM_MEMORY_BEGIN, WASM_MEMORY_SIZE},
 };
 
 /* Main SYSCLK frequency in Hz (168MHz) */
@@ -114,6 +116,18 @@ static void wa2x_machine_state_init(MachineState *machine) {
   memory_region_add_subregion(system_memory, wa2x_memmap[WA2X_MODULE].base,
                               &s->syscon.module);
 
+  /* register aot memory */
+  memory_region_init_ram(&s->syscon.aot, NULL, "arm.wa2x.aot",
+                         wa2x_memmap[WA2X_AOT].size, &error_fatal);
+  memory_region_add_subregion(system_memory, wa2x_memmap[WA2X_AOT].base,
+                              &s->syscon.aot);
+
+  /* register lime memory */
+  memory_region_init_ram(&s->syscon.lime, NULL, "arm.wa2x.lime",
+                         wa2x_memmap[WA2X_LIME].size, &error_fatal);
+  memory_region_add_subregion(system_memory, wa2x_memmap[WA2X_LIME].base,
+                              &s->syscon.lime);
+
   if (!sysbus_realize(SYS_BUS_DEVICE(&s->armv7m), &error_fatal)) {
     error_report("CPU failed to init");
     exit(EXIT_FAILURE);
@@ -141,7 +155,7 @@ static void wa2x_machine_class_init(ObjectClass *klass, const void *data) {
   mc->valid_cpu_types = valid_cpu_types;
   mc->max_cpus = 1;
   mc->default_ram_id = "arm.wa2x.ram";
-  mc->default_ram_size = 252 * MiB;
+  mc->default_ram_size = 8 * MiB;
 }
 
 static const TypeInfo wa2x_machine_type_info = {
