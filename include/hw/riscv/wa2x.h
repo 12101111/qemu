@@ -20,7 +20,7 @@
 #define HW_WA2X_H
 
 #include "hw/riscv/riscv_hart.h"
-#include "hw/boards.h"
+#include "hw/core/boards.h"
 #include "hw/char/wa2x_syscon.h"
 
 #define TYPE_RISCV_WA2X_MACHINE MACHINE_TYPE_NAME("wa2x")

@@ -19,7 +19,7 @@
 #ifndef HW_WA2X_H
 #define HW_WA2X_H
 
-#include "hw/boards.h"
+#include "hw/core/boards.h"
 #include "cpu.h"
 #include "system/memory.h"
 #include "target/i386/cpu-qom.h"
