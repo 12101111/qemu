@@ -19,7 +19,7 @@
 #include "qemu/osdep.h"
 
 #include "hw/char/wa2x_syscon.h"
-#include "hw/qdev-properties.h"
+#include "hw/core/qdev-properties.h"
 #include "qapi/error.h"
 #include "system/memory.h"
 #include <stdint.h>

@@ -20,7 +20,7 @@
 #define HW_WA2X_H
 
 #include "target/arm/cpu.h"
-#include "hw/boards.h"
+#include "hw/core/boards.h"
 #include "hw/char/wa2x_syscon.h"
 
 #define TYPE_ARM_WA2X_MACHINE MACHINE_TYPE_NAME("wa2x")
