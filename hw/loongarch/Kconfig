@@ -25,3 +25,8 @@ config LOONGARCH_VIRT
     select DIMM
     select PFLASH_CFI01
     select ACPI_HMAT
+
+config LOONGARCH_WA2X
+    bool
+    default y
+    depends on LOONGARCH64
