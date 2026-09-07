@@ -30,6 +30,7 @@
 #include "qapi/error.h"
 #include "qemu/cutils.h"
 #include "qemu/error-report.h"
+#include "qemu/target-info.h"
 #include "qemu/typedefs.h"
 #include "qemu/units.h"
 #include "qom/object.h"
@@ -157,11 +158,18 @@ static void wa2x_machine_state_init(MachineState *machine) {
 
 static void wa2x_machine_instance_init(Object *obj) {}
 
+static const char *wa2x_get_default_cpu_type(const MachineState *ms) {
+  if (target_aarch64()) {
+    return ARM_CPU_TYPE_NAME("cortex-a53");
+  }
+  return ARM_CPU_TYPE_NAME("cortex-a15");
+}
+
 static void wa2x_machine_class_init(ObjectClass *klass, const void *data) {
   MachineClass *mc = MACHINE_CLASS(klass);
   mc->desc = "Wa2x test runner";
   mc->init = wa2x_machine_state_init;
-  mc->default_cpu_type = ARM_CPU_TYPE_NAME("cortex-a53");
+  mc->get_default_cpu_type = wa2x_get_default_cpu_type;
   mc->max_cpus = 1;
   mc->default_ram_id = "arm.wa2x.ram";
   mc->default_ram_size = 8 * MiB;
