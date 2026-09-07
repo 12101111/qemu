@@ -70,6 +70,7 @@ enum plugin_dyn_cb_type {
     PLUGIN_CB_REGULAR,
     PLUGIN_CB_COND,
     PLUGIN_CB_MEM_REGULAR,
+    PLUGIN_CB_MEM_COND,
     PLUGIN_CB_INLINE_ADD_U64,
     PLUGIN_CB_INLINE_STORE_U64,
 };
@@ -85,6 +86,10 @@ struct qemu_plugin_inline_cb {
     qemu_plugin_u64 entry;
     uint64_t imm;
     enum qemu_plugin_mem_rw rw;
+    /* condition guarding this op; ALWAYS means unconditional */
+    enum qemu_plugin_cond cond;
+    qemu_plugin_u64 cond_entry;
+    uint64_t cond_imm;
 };
 
 struct qemu_plugin_conditional_cb {
@@ -94,6 +99,8 @@ struct qemu_plugin_conditional_cb {
     qemu_plugin_u64 entry;
     enum qemu_plugin_cond cond;
     uint64_t imm;
+    /* read/write filtering; only used by PLUGIN_CB_MEM_COND */
+    enum qemu_plugin_mem_rw rw;
 };
 
 /*

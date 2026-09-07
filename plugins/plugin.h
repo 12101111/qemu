@@ -75,6 +75,15 @@ void plugin_register_inline_op_on_entry(GArray **arr,
                                         qemu_plugin_u64 entry,
                                         uint64_t imm);
 
+void plugin_register_cond_inline_op_on_entry(GArray **arr,
+                                             enum qemu_plugin_mem_rw rw,
+                                             enum qemu_plugin_op op,
+                                             qemu_plugin_u64 entry,
+                                             uint64_t imm,
+                                             enum qemu_plugin_cond cond,
+                                             qemu_plugin_u64 cond_entry,
+                                             uint64_t cond_imm);
+
 void plugin_reset_uninstall(qemu_plugin_id_t id,
                             qemu_plugin_udata_cb_t cb,
                             void *userdata,
@@ -109,6 +118,15 @@ void plugin_register_vcpu_mem_cb(GArray **arr,
                                  enum qemu_plugin_cb_flags flags,
                                  enum qemu_plugin_mem_rw rw,
                                  void *udata);
+
+void plugin_register_vcpu_mem_cond_cb(GArray **arr,
+                                      void *cb,
+                                      enum qemu_plugin_cb_flags flags,
+                                      enum qemu_plugin_mem_rw rw,
+                                      enum qemu_plugin_cond cond,
+                                      qemu_plugin_u64 entry,
+                                      uint64_t imm,
+                                      void *udata);
 
 void exec_inline_op(enum plugin_dyn_cb_type type,
                     struct qemu_plugin_inline_cb *cb,

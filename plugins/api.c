@@ -171,6 +171,27 @@ void qemu_plugin_register_vcpu_insn_exec_inline_per_vcpu(
     }
 }
 
+void qemu_plugin_register_vcpu_insn_exec_cond_inline_per_vcpu(
+    struct qemu_plugin_insn *insn,
+    enum qemu_plugin_op op,
+    qemu_plugin_u64 entry,
+    uint64_t imm,
+    enum qemu_plugin_cond cond,
+    qemu_plugin_u64 cond_entry,
+    uint64_t cond_imm)
+{
+    if (cond == QEMU_PLUGIN_COND_NEVER || tb_is_mem_only()) {
+        return;
+    }
+    if (cond == QEMU_PLUGIN_COND_ALWAYS) {
+        qemu_plugin_register_vcpu_insn_exec_inline_per_vcpu(insn, op, entry,
+                                                            imm);
+        return;
+    }
+    plugin_register_cond_inline_op_on_entry(&insn->insn_cbs, 0, op, entry, imm,
+                                            cond, cond_entry, cond_imm);
+}
+
 
 /*
  * We always plant memory instrumentation because they don't finalise until
@@ -185,6 +206,26 @@ void qemu_plugin_register_vcpu_mem_cb(struct qemu_plugin_insn *insn,
     plugin_register_vcpu_mem_cb(&insn->mem_cbs, cb, flags, rw, udata);
 }
 
+void qemu_plugin_register_vcpu_mem_cond_cb(struct qemu_plugin_insn *insn,
+                                           qemu_plugin_vcpu_mem_cb_t cb,
+                                           enum qemu_plugin_cb_flags flags,
+                                           enum qemu_plugin_mem_rw rw,
+                                           enum qemu_plugin_cond cond,
+                                           qemu_plugin_u64 entry,
+                                           uint64_t imm,
+                                           void *udata)
+{
+    if (cond == QEMU_PLUGIN_COND_NEVER) {
+        return;
+    }
+    if (cond == QEMU_PLUGIN_COND_ALWAYS) {
+        qemu_plugin_register_vcpu_mem_cb(insn, cb, flags, rw, udata);
+        return;
+    }
+    plugin_register_vcpu_mem_cond_cb(&insn->mem_cbs, cb, flags, rw,
+                                     cond, entry, imm, udata);
+}
+
 void qemu_plugin_register_vcpu_mem_inline_per_vcpu(
     struct qemu_plugin_insn *insn,
     enum qemu_plugin_mem_rw rw,
@@ -193,6 +234,28 @@ void qemu_plugin_register_vcpu_mem_inline_per_vcpu(
     uint64_t imm)
 {
     plugin_register_inline_op_on_entry(&insn->mem_cbs, rw, op, entry, imm);
+}
+
+void qemu_plugin_register_vcpu_mem_cond_inline_per_vcpu(
+    struct qemu_plugin_insn *insn,
+    enum qemu_plugin_mem_rw rw,
+    enum qemu_plugin_op op,
+    qemu_plugin_u64 entry,
+    uint64_t imm,
+    enum qemu_plugin_cond cond,
+    qemu_plugin_u64 cond_entry,
+    uint64_t cond_imm)
+{
+    if (cond == QEMU_PLUGIN_COND_NEVER) {
+        return;
+    }
+    if (cond == QEMU_PLUGIN_COND_ALWAYS) {
+        qemu_plugin_register_vcpu_mem_inline_per_vcpu(insn, rw, op, entry,
+                                                      imm);
+        return;
+    }
+    plugin_register_cond_inline_op_on_entry(&insn->mem_cbs, rw, op, entry, imm,
+                                            cond, cond_entry, cond_imm);
 }
 
 void qemu_plugin_register_vcpu_tb_trans_cb(qemu_plugin_id_t id,

@@ -171,17 +171,32 @@ static TCGCond plugin_cond_to_tcgcond(enum qemu_plugin_cond cond)
     }
 }
 
-static void gen_udata_cond_cb(struct qemu_plugin_conditional_cb *cb)
+/*
+ * Emit a run-time check of a scoreboard entry against an immediate.
+ * If the condition is false, execution branches to the returned label,
+ * which must be set right after the guarded ops.
+ */
+static TCGLabel *gen_cond_guard(enum qemu_plugin_cond cond,
+                                qemu_plugin_u64 entry, uint64_t imm)
 {
-    TCGv_ptr ptr = gen_plugin_u64_ptr(cb->entry);
+    TCGv_ptr ptr = gen_plugin_u64_ptr(entry);
     TCGv_i64 val = tcg_temp_ebb_new_i64();
     TCGLabel *after_cb = gen_new_label();
 
-    /* Condition should be negated, as calling the cb is the "else" path */
-    TCGCond cond = tcg_invert_cond(plugin_cond_to_tcgcond(cb->cond));
+    /* Condition should be negated, as the guarded code is the "else" path */
+    TCGCond tcg_cond = tcg_invert_cond(plugin_cond_to_tcgcond(cond));
 
     tcg_gen_ld_i64(val, ptr, 0);
-    tcg_gen_brcondi_i64(cond, val, cb->imm, after_cb);
+    tcg_gen_brcondi_i64(tcg_cond, val, imm, after_cb);
+    tcg_temp_free_i64(val);
+    tcg_temp_free_ptr(ptr);
+
+    return after_cb;
+}
+
+static void gen_udata_cond_cb(struct qemu_plugin_conditional_cb *cb)
+{
+    TCGLabel *after_cb = gen_cond_guard(cb->cond, cb->entry, cb->imm);
     TCGv_i32 cpu_index = gen_cpu_index();
     enum qemu_plugin_cb_flags cb_flags =
         tcg_call_to_qemu_plugin_cb_flags(cb->info->flags);
@@ -198,13 +213,20 @@ static void gen_udata_cond_cb(struct qemu_plugin_conditional_cb *cb)
     tcg_temp_free_i32(flags);
     tcg_temp_free_i32(clear_flags);
     gen_set_label(after_cb);
+}
 
-    tcg_temp_free_i64(val);
-    tcg_temp_free_ptr(ptr);
+/* Return a guard label for conditional inline ops, NULL if unconditional */
+static TCGLabel *gen_inline_cond_guard(struct qemu_plugin_inline_cb *cb)
+{
+    if (cb->cond == QEMU_PLUGIN_COND_ALWAYS) {
+        return NULL;
+    }
+    return gen_cond_guard(cb->cond, cb->cond_entry, cb->cond_imm);
 }
 
 static void gen_inline_add_u64_cb(struct qemu_plugin_inline_cb *cb)
 {
+    TCGLabel *after_cb = gen_inline_cond_guard(cb);
     TCGv_ptr ptr = gen_plugin_u64_ptr(cb->entry);
     TCGv_i64 val = tcg_temp_ebb_new_i64();
 
@@ -214,38 +236,61 @@ static void gen_inline_add_u64_cb(struct qemu_plugin_inline_cb *cb)
 
     tcg_temp_free_i64(val);
     tcg_temp_free_ptr(ptr);
+    if (after_cb) {
+        gen_set_label(after_cb);
+    }
 }
 
 static void gen_inline_store_u64_cb(struct qemu_plugin_inline_cb *cb)
 {
+    TCGLabel *after_cb = gen_inline_cond_guard(cb);
     TCGv_ptr ptr = gen_plugin_u64_ptr(cb->entry);
     TCGv_i64 val = tcg_constant_i64(cb->imm);
 
     tcg_gen_st_i64(val, ptr, 0);
 
     tcg_temp_free_ptr(ptr);
+    if (after_cb) {
+        gen_set_label(after_cb);
+    }
 }
 
-static void gen_mem_cb(struct qemu_plugin_regular_cb *cb,
-                       qemu_plugin_meminfo_t meminfo, TCGv_i64 addr)
+static void gen_mem_cb_call(qemu_plugin_vcpu_mem_cb_t cb,
+                            TCGHelperInfo *info, void *userp,
+                            qemu_plugin_meminfo_t meminfo, TCGv_i64 addr)
 {
     TCGv_i32 cpu_index = gen_cpu_index();
     enum qemu_plugin_cb_flags cb_flags =
-        tcg_call_to_qemu_plugin_cb_flags(cb->info->flags);
+        tcg_call_to_qemu_plugin_cb_flags(info->flags);
     TCGv_i32 flags = tcg_constant_i32(cb_flags);
     TCGv_i32 clear_flags = tcg_constant_i32(QEMU_PLUGIN_CB_NO_REGS);
     tcg_gen_st_i32(flags, tcg_env,
            offsetof(CPUState, neg.plugin_cb_flags) - sizeof(CPUState));
-    tcg_gen_call4(cb->f.vcpu_mem, cb->info, NULL,
+    tcg_gen_call4(cb, info, NULL,
                   tcgv_i32_temp(cpu_index),
                   tcgv_i32_temp(tcg_constant_i32(meminfo)),
                   tcgv_i64_temp(addr),
-                  tcgv_ptr_temp(tcg_constant_ptr(cb->userp)));
+                  tcgv_ptr_temp(tcg_constant_ptr(userp)));
     tcg_gen_st_i32(clear_flags, tcg_env,
            offsetof(CPUState, neg.plugin_cb_flags) - sizeof(CPUState));
     tcg_temp_free_i32(cpu_index);
     tcg_temp_free_i32(flags);
     tcg_temp_free_i32(clear_flags);
+}
+
+static void gen_mem_cb(struct qemu_plugin_regular_cb *cb,
+                       qemu_plugin_meminfo_t meminfo, TCGv_i64 addr)
+{
+    gen_mem_cb_call(cb->f.vcpu_mem, cb->info, cb->userp, meminfo, addr);
+}
+
+static void gen_mem_cond_cb(struct qemu_plugin_conditional_cb *cb,
+                            qemu_plugin_meminfo_t meminfo, TCGv_i64 addr)
+{
+    TCGLabel *after_cb = gen_cond_guard(cb->cond, cb->entry, cb->imm);
+
+    gen_mem_cb_call(cb->f.vcpu_mem, cb->info, cb->userp, meminfo, addr);
+    gen_set_label(after_cb);
 }
 
 static void inject_cb(struct qemu_plugin_dyn_cb *cb)
@@ -269,25 +314,112 @@ static void inject_cb(struct qemu_plugin_dyn_cb *cb)
     }
 }
 
+/*
+ * Set when a conditional branch (brcond/set_label pair) was injected at
+ * a memory callback marker, i.e. in the middle of a guest instruction.
+ * Such labels split an EBB, so EBB temps live across them must be
+ * upgraded to TEMP_TB afterwards (see plugin_gen_upgrade_ebb_temps).
+ */
+static bool injected_mid_insn_label;
+
 static void inject_mem_cb(struct qemu_plugin_dyn_cb *cb,
                           enum qemu_plugin_mem_rw rw,
                           qemu_plugin_meminfo_t meminfo, TCGv_i64 addr)
 {
+    struct qemu_plugin_inline_cb *inline_cb = &cb->inline_insn;
+
     switch (cb->type) {
     case PLUGIN_CB_MEM_REGULAR:
         if (rw & cb->regular.rw) {
             gen_mem_cb(&cb->regular, meminfo, addr);
         }
         break;
+    case PLUGIN_CB_MEM_COND:
+        if (rw & cb->cond.rw) {
+            injected_mid_insn_label = true;
+            gen_mem_cond_cb(&cb->cond, meminfo, addr);
+        }
+        break;
     case PLUGIN_CB_INLINE_ADD_U64:
+        if (rw & inline_cb->rw) {
+            if (inline_cb->cond != QEMU_PLUGIN_COND_ALWAYS) {
+                injected_mid_insn_label = true;
+            }
+            gen_inline_add_u64_cb(inline_cb);
+        }
+        break;
     case PLUGIN_CB_INLINE_STORE_U64:
-        if (rw & cb->inline_insn.rw) {
-            inject_cb(cb);
+        if (rw & inline_cb->rw) {
+            if (inline_cb->cond != QEMU_PLUGIN_COND_ALWAYS) {
+                injected_mid_insn_label = true;
+            }
+            gen_inline_store_u64_cb(inline_cb);
         }
         break;
     default:
         g_assert_not_reached();
     }
+}
+
+/*
+ * A label injected at a memory callback marker sits in the middle of a
+ * guest instruction, where the translator may still hold live EBB temps
+ * (at the very least the address temp used by the memory op that
+ * follows). TEMP_EBB temps are not allowed to cross labels: liveness
+ * analysis kills them there, and a later use would hit a dead temp.
+ * TEMP_TB temps do survive labels (their value is synced to a frame
+ * slot), so upgrade any TEMP_EBB temp used on both sides of a label.
+ *
+ * This runs before liveness_pass_0(), which performs the same analysis
+ * in the opposite direction (reducing TEMP_TB to TEMP_EBB for temps
+ * used within a single EBB), so upgraded temps receive the regular
+ * TEMP_TB treatment from then on.
+ */
+static void plugin_gen_upgrade_ebb_temps(void)
+{
+    TCGContext *s = tcg_ctx;
+    int nb_temps = s->nb_temps;
+    TCGOp **first_ebb = g_new0(TCGOp *, nb_temps);
+    TCGOp *ebb = QTAILQ_FIRST(&s->ops);
+    TCGOp *op;
+
+    QTAILQ_FOREACH(op, &s->ops, link) {
+        const TCGOpDef *def;
+        int nb_oargs, nb_iargs;
+
+        switch (op->opc) {
+        case INDEX_op_set_label:
+            ebb = op;
+            continue;
+        case INDEX_op_discard:
+            continue;
+        case INDEX_op_call:
+            nb_oargs = TCGOP_CALLO(op);
+            nb_iargs = TCGOP_CALLI(op);
+            break;
+        default:
+            def = &tcg_op_defs[op->opc];
+            nb_oargs = def->nb_oargs;
+            nb_iargs = def->nb_iargs;
+            break;
+        }
+
+        for (int i = 0; i < nb_oargs + nb_iargs; i++) {
+            TCGTemp *ts = arg_temp(op->args[i]);
+            int idx = ts - s->temps;
+
+            if (ts->kind != TEMP_EBB) {
+                continue;
+            }
+            if (first_ebb[idx] == NULL) {
+                first_ebb[idx] = ebb;
+            } else if (first_ebb[idx] != ebb) {
+                ts->kind = TEMP_TB;
+            }
+        }
+    }
+
+    g_free(first_ebb);
 }
 
 static void plugin_gen_inject(struct qemu_plugin_tb *plugin_tb)
@@ -312,6 +444,7 @@ static void plugin_gen_inject(struct qemu_plugin_tb *plugin_tb)
      * The simplest solution is to release them all and create new.
      */
     tcg_temp_ebb_reset_freed(tcg_ctx);
+    injected_mid_insn_label = false;
 
     QTAILQ_FOREACH_SAFE(op, &tcg_ctx->ops, link, next) {
         switch (op->opc) {
@@ -408,6 +541,11 @@ static void plugin_gen_inject(struct qemu_plugin_tb *plugin_tb)
             /* plugins don't care about any other ops */
             break;
         }
+    }
+
+    if (injected_mid_insn_label) {
+        plugin_gen_upgrade_ebb_temps();
+        injected_mid_insn_label = false;
     }
 }
 

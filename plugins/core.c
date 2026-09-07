@@ -359,9 +359,36 @@ void plugin_register_inline_op_on_entry(GArray **arr,
 {
     struct qemu_plugin_dyn_cb *dyn_cb;
 
-    struct qemu_plugin_inline_cb inline_cb = { .rw = rw,
-                                               .entry = entry,
-                                               .imm = imm };
+    struct qemu_plugin_inline_cb inline_cb = {
+        .rw = rw,
+        .entry = entry,
+        .imm = imm,
+        .cond = QEMU_PLUGIN_COND_ALWAYS,
+    };
+    dyn_cb = plugin_get_dyn_cb(arr);
+    dyn_cb->type = op_to_cb_type(op);
+    dyn_cb->inline_insn = inline_cb;
+}
+
+void plugin_register_cond_inline_op_on_entry(GArray **arr,
+                                             enum qemu_plugin_mem_rw rw,
+                                             enum qemu_plugin_op op,
+                                             qemu_plugin_u64 entry,
+                                             uint64_t imm,
+                                             enum qemu_plugin_cond cond,
+                                             qemu_plugin_u64 cond_entry,
+                                             uint64_t cond_imm)
+{
+    struct qemu_plugin_dyn_cb *dyn_cb;
+
+    struct qemu_plugin_inline_cb inline_cb = {
+        .rw = rw,
+        .entry = entry,
+        .imm = imm,
+        .cond = cond,
+        .cond_entry = cond_entry,
+        .cond_imm = cond_imm,
+    };
     dyn_cb = plugin_get_dyn_cb(arr);
     dyn_cb->type = op_to_cb_type(op);
     dyn_cb->inline_insn = inline_cb;
@@ -429,46 +456,74 @@ void plugin_register_dyn_cond_cb__udata(GArray **arr,
     dyn_cb->cond = cond_cb;
 }
 
+/*
+ * Expect that the underlying type for enum qemu_plugin_meminfo_t
+ * is either int32_t or uint32_t, aka int or unsigned int.
+ */
+QEMU_BUILD_BUG_ON(
+    !__builtin_types_compatible_p(qemu_plugin_meminfo_t, uint32_t) &&
+    !__builtin_types_compatible_p(qemu_plugin_meminfo_t, int32_t));
+
+/*
+ * Match qemu_plugin_vcpu_mem_cb_t:
+ *   void (*)(uint32_t, qemu_plugin_meminfo_t, uint64_t, void *)
+ */
+static TCGHelperInfo plugin_mem_cb_info[4] = {
+    [QEMU_PLUGIN_CB_NO_REGS].flags = TCG_CALL_NO_RWG,
+    [QEMU_PLUGIN_CB_R_REGS].flags = TCG_CALL_NO_WG,
+    [QEMU_PLUGIN_CB_RW_REGS].flags = 0,
+    [QEMU_PLUGIN_CB_RW_REGS_PC].flags = 0,
+    [0 ... 3].typemask =
+        (dh_typemask(void, 0) |
+         dh_typemask(i32, 1) |
+         (__builtin_types_compatible_p(qemu_plugin_meminfo_t, uint32_t)
+          ? dh_typemask(i32, 2) : dh_typemask(s32, 2)) |
+         dh_typemask(i64, 3) |
+         dh_typemask(ptr, 4))
+};
+
 void plugin_register_vcpu_mem_cb(GArray **arr,
                                  void *cb,
                                  enum qemu_plugin_cb_flags flags,
                                  enum qemu_plugin_mem_rw rw,
                                  void *udata)
 {
-    /*
-     * Expect that the underlying type for enum qemu_plugin_meminfo_t
-     * is either int32_t or uint32_t, aka int or unsigned int.
-     */
-    QEMU_BUILD_BUG_ON(
-        !__builtin_types_compatible_p(qemu_plugin_meminfo_t, uint32_t) &&
-        !__builtin_types_compatible_p(qemu_plugin_meminfo_t, int32_t));
-
-    static TCGHelperInfo info[4] = {
-        [QEMU_PLUGIN_CB_NO_REGS].flags = TCG_CALL_NO_RWG,
-        [QEMU_PLUGIN_CB_R_REGS].flags = TCG_CALL_NO_WG,
-        [QEMU_PLUGIN_CB_RW_REGS].flags = 0,
-        [QEMU_PLUGIN_CB_RW_REGS_PC].flags = 0,
-        /*
-         * Match qemu_plugin_vcpu_mem_cb_t:
-         *   void (*)(uint32_t, qemu_plugin_meminfo_t, uint64_t, void *)
-         */
-        [0 ... 3].typemask =
-            (dh_typemask(void, 0) |
-             dh_typemask(i32, 1) |
-             (__builtin_types_compatible_p(qemu_plugin_meminfo_t, uint32_t)
-              ? dh_typemask(i32, 2) : dh_typemask(s32, 2)) |
-             dh_typemask(i64, 3) |
-             dh_typemask(ptr, 4))
-    };
-    assert((unsigned)flags < ARRAY_SIZE(info));
+    assert((unsigned)flags < ARRAY_SIZE(plugin_mem_cb_info));
 
     struct qemu_plugin_dyn_cb *dyn_cb = plugin_get_dyn_cb(arr);
-    struct qemu_plugin_regular_cb regular_cb = { .userp = udata,
-                                                 .rw = rw,
-                                                 .f.vcpu_mem = cb,
-                                                 .info = &info[flags] };
+    struct qemu_plugin_regular_cb regular_cb = {
+        .userp = udata,
+        .rw = rw,
+        .f.vcpu_mem = cb,
+        .info = &plugin_mem_cb_info[flags],
+    };
     dyn_cb->type = PLUGIN_CB_MEM_REGULAR;
     dyn_cb->regular = regular_cb;
+}
+
+void plugin_register_vcpu_mem_cond_cb(GArray **arr,
+                                      void *cb,
+                                      enum qemu_plugin_cb_flags flags,
+                                      enum qemu_plugin_mem_rw rw,
+                                      enum qemu_plugin_cond cond,
+                                      qemu_plugin_u64 entry,
+                                      uint64_t imm,
+                                      void *udata)
+{
+    assert((unsigned)flags < ARRAY_SIZE(plugin_mem_cb_info));
+
+    struct qemu_plugin_dyn_cb *dyn_cb = plugin_get_dyn_cb(arr);
+    struct qemu_plugin_conditional_cb cond_cb = {
+        .userp = udata,
+        .rw = rw,
+        .f.vcpu_mem = cb,
+        .cond = cond,
+        .entry = entry,
+        .imm = imm,
+        .info = &plugin_mem_cb_info[flags],
+    };
+    dyn_cb->type = PLUGIN_CB_MEM_COND;
+    dyn_cb->cond = cond_cb;
 }
 
 /*
@@ -712,6 +767,47 @@ void exec_inline_op(enum plugin_dyn_cb_type type,
     }
 }
 
+/*
+ * Evaluate a scoreboard-based condition in C, for callbacks executed
+ * from slow paths where the condition cannot be embedded in TCG ops.
+ * Comparisons are unsigned, matching the TCG generated fast path.
+ */
+static bool plugin_cond_match(enum qemu_plugin_cond cond,
+                              qemu_plugin_u64 entry,
+                              uint64_t imm,
+                              int cpu_index)
+{
+    char *ptr = entry.score->data->data;
+    size_t elem_size = g_array_get_element_size(entry.score->data);
+    uint64_t val = *(uint64_t *)(ptr + entry.offset + cpu_index * elem_size);
+
+    switch (cond) {
+    case QEMU_PLUGIN_COND_EQ:
+        return val == imm;
+    case QEMU_PLUGIN_COND_NE:
+        return val != imm;
+    case QEMU_PLUGIN_COND_LT:
+        return val < imm;
+    case QEMU_PLUGIN_COND_LE:
+        return val <= imm;
+    case QEMU_PLUGIN_COND_GT:
+        return val > imm;
+    case QEMU_PLUGIN_COND_GE:
+        return val >= imm;
+    default:
+        /* ALWAYS and NEVER are handled at registration time */
+        g_assert_not_reached();
+    }
+}
+
+static bool plugin_inline_cb_enabled(struct qemu_plugin_inline_cb *cb,
+                                     int cpu_index)
+{
+    return cb->cond == QEMU_PLUGIN_COND_ALWAYS ||
+           plugin_cond_match(cb->cond, cb->cond_entry, cb->cond_imm,
+                             cpu_index);
+}
+
 QEMU_DISABLE_CFI
 void qemu_plugin_vcpu_mem_cb(CPUState *cpu, uint64_t vaddr,
                              uint64_t value_low,
@@ -744,9 +840,23 @@ void qemu_plugin_vcpu_mem_cb(CPUState *cpu, uint64_t vaddr,
                 qemu_plugin_set_cb_flags(cpu, QEMU_PLUGIN_CB_NO_REGS);
             }
             break;
+        case PLUGIN_CB_MEM_COND:
+            if (rw & cb->cond.rw &&
+                plugin_cond_match(cb->cond.cond, cb->cond.entry,
+                                  cb->cond.imm, cpu->cpu_index)) {
+                qemu_plugin_set_cb_flags(cpu,
+                    tcg_call_to_qemu_plugin_cb_flags(cb->cond.info->flags));
+
+                cb->cond.f.vcpu_mem(cpu->cpu_index,
+                                    make_plugin_meminfo(oi, rw),
+                                    vaddr, cb->cond.userp);
+                qemu_plugin_set_cb_flags(cpu, QEMU_PLUGIN_CB_NO_REGS);
+            }
+            break;
         case PLUGIN_CB_INLINE_ADD_U64:
         case PLUGIN_CB_INLINE_STORE_U64:
-            if (rw & cb->inline_insn.rw) {
+            if (rw & cb->inline_insn.rw &&
+                plugin_inline_cb_enabled(&cb->inline_insn, cpu->cpu_index)) {
                 exec_inline_op(cb->type, &cb->inline_insn, cpu->cpu_index);
             }
             break;
