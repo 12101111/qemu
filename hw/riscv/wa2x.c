@@ -21,6 +21,7 @@
 #include "hw/core/boards.h"
 #include "hw/core/qdev-properties.h"
 #include "hw/riscv/boot.h"
+#include "hw/riscv/machines-qom.h"
 #include "hw/riscv/wa2x.h"
 #include "hw/core/sysbus.h"
 #include "qapi/error.h"
@@ -47,6 +48,7 @@ static void wa2x_machine_state_init(MachineState *machine) {
   Wa2xMachineState *s = RISCV_WA2X_MACHINE(machine);
   MemoryRegion *system_memory = get_system_memory();
   SysBusDevice *sysbus;
+  RISCVBootInfo boot_info;
   hwaddr firmware_load_addr = wa2x_memmap[WA2X_ROM].base;
 
   /* No default firmware */
@@ -77,7 +79,9 @@ static void wa2x_machine_state_init(MachineState *machine) {
   /* load firmware to ROM
    * In our RISC-V memory layout, the boot addr is fixed to WA2X_ROM
    */
-  riscv_load_firmware(machine->firmware, &firmware_load_addr, NULL);
+  riscv_boot_info_init(&boot_info, &s->soc);
+  riscv_load_firmware(machine, &boot_info, machine->firmware,
+                      &firmware_load_addr, NULL);
 
   if (!sysbus_realize(SYS_BUS_DEVICE(&s->syscon), &error_fatal)) {
     return;
@@ -147,6 +151,7 @@ static const TypeInfo wa2x_machine_type_info = {
     .parent = TYPE_MACHINE,
     .class_init = wa2x_machine_class_init,
     .instance_size = sizeof(Wa2xMachineState),
+    .interfaces = riscv32_64_machine_interfaces,
 };
 
 static void wa2x_machine_type_info_register(void) {
