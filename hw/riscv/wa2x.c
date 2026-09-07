@@ -18,7 +18,9 @@
 
 #include "qemu/osdep.h"
 
+#include "elf.h"
 #include "hw/core/boards.h"
+#include "hw/core/loader.h"
 #include "hw/core/qdev-properties.h"
 #include "hw/riscv/boot.h"
 #include "hw/riscv/machines-qom.h"
@@ -48,8 +50,7 @@ static void wa2x_machine_state_init(MachineState *machine) {
   Wa2xMachineState *s = RISCV_WA2X_MACHINE(machine);
   MemoryRegion *system_memory = get_system_memory();
   SysBusDevice *sysbus;
-  RISCVBootInfo boot_info;
-  hwaddr firmware_load_addr = wa2x_memmap[WA2X_ROM].base;
+  uint64_t firmware_entry;
 
   /* No default firmware */
   if (!machine->firmware) {
@@ -78,10 +79,17 @@ static void wa2x_machine_state_init(MachineState *machine) {
 
   /* load firmware to ROM
    * In our RISC-V memory layout, the boot addr is fixed to WA2X_ROM
+   *
+   * Use load_elf() so segments are registered as ROM blobs and written
+   * with address_space_write_rom() at reset time: riscv_load_firmware()
+   * uses address_space_write() directly, which fails for the read-only
+   * ROM region (and for RAM segments not registered yet).
    */
-  riscv_boot_info_init(&boot_info, &s->soc);
-  riscv_load_firmware(machine, &boot_info, machine->firmware,
-                      &firmware_load_addr, NULL);
+  if (load_elf(machine->firmware, NULL, NULL, NULL, &firmware_entry, NULL,
+               NULL, NULL, 0, EM_RISCV, 1, 0) < 0) {
+    error_report("failed to load firmware");
+    exit(EXIT_FAILURE);
+  }
 
   if (!sysbus_realize(SYS_BUS_DEVICE(&s->syscon), &error_fatal)) {
     return;
@@ -132,7 +140,7 @@ static void wa2x_machine_state_init(MachineState *machine) {
 
   /* ROM reset vector */
   riscv_setup_rom_reset_vec(
-      machine, &s->soc, firmware_load_addr, wa2x_memmap[WA2X_MROM].base,
+      machine, &s->soc, firmware_entry, wa2x_memmap[WA2X_MROM].base,
       wa2x_memmap[WA2X_MROM].size, wa2x_memmap[WA2X_ROM].base, 0);
 }
 
