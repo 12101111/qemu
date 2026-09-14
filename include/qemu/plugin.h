@@ -224,6 +224,19 @@ void qemu_plugin_user_prefork_lock(void);
  */
 void qemu_plugin_user_postfork(bool is_child);
 
+/**
+ * qemu_user_safe_fork(): fork a user-mode emulator with consistent state
+ *
+ * Must be called from a vCPU thread while outside of cpu_exec (e.g.
+ * from a syscall callback).
+ *
+ * Returns the PID of the child to the parent, 0 to the child, or a
+ * negative errno value on failure.
+ * 
+ * Only implemented in linux-user
+ */
+int qemu_user_safe_fork(void);
+
 enum qemu_plugin_cb_flags tcg_call_to_qemu_plugin_cb_flags(int flags);
 
 static inline void qemu_plugin_set_cb_flags(CPUState *cpu,

@@ -182,6 +182,43 @@ void fork_end(pid_t pid)
     end_exclusive();
 }
 
+#ifdef CONFIG_PLUGIN
+/*
+ * Implementation for the qemu_plugin_user_fork() plugin API. Fork the
+ * emulator from a vCPU thread outside of cpu_exec(), keeping QEMU's
+ * internal state consistent by following the same protocol as the
+ * guest fork path in do_fork().
+ */
+int qemu_user_safe_fork(void)
+{
+    CPUState *cpu = thread_cpu;
+    pid_t ret;
+
+    g_assert(cpu && !cpu->running);
+
+    /*
+     * Handle pending signals first; unlike do_fork() we cannot ask the
+     * caller to restart via -QEMU_ERESTARTSYS. This may set up a guest
+     * signal frame, which the child then inherits.
+     */
+    while (block_signals()) {
+        process_pending_signals(cpu_env(cpu));
+    }
+
+    fork_start();
+    ret = fork();
+    fork_end(ret);
+
+    /*
+     * Restore the signal mask replaced by block_signals(), delivering
+     * anything that arrived while we were forking.
+     */
+    process_pending_signals(cpu_env(cpu));
+
+    return ret < 0 ? -errno : ret;
+}
+#endif
+
 __thread CPUState *thread_cpu;
 
 bool qemu_cpu_is_self(CPUState *cpu)

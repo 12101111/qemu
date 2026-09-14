@@ -1456,6 +1456,37 @@ void qemu_plugin_u64_set(qemu_plugin_u64 entry, unsigned int vcpu_index,
 QEMU_PLUGIN_API
 uint64_t qemu_plugin_u64_sum(qemu_plugin_u64 entry);
 
+/**
+ * qemu_plugin_user_fork() - safely fork a user-mode emulator
+ *
+ * Fork the emulator process while keeping QEMU's internal state
+ * consistent: all vCPUs are quiesced and internal locks are either
+ * carried across the fork() or re-initialised in the child, following
+ * the same protocol as when the guest itself executes a fork syscall.
+ *
+ * This function must only be called from a vCPU callback that runs
+ * outside of cpu_exec, i.e. from callbacks registered with
+ * qemu_plugin_register_vcpu_syscall_cb(),
+ * qemu_plugin_register_vcpu_syscall_ret_cb() or
+ * qemu_plugin_register_vcpu_syscall_filter_cb(). Calling it from
+ * translation, instruction or memory access callbacks is not allowed
+ * as those run while the vCPU is executing translated code.
+ *
+ * The guest state is duplicated unmodified: unlike a guest-initiated
+ * fork no guest registers are changed, so both the parent and the
+ * child resume executing the same guest code once the callback
+ * returns. The plugin can distinguish the two by the return value and
+ * is responsible for any coordination between them (e.g. having the
+ * child run a workload and then exit, fork-server style). Threads
+ * created by the plugin itself do not survive the fork in the child.
+ *
+ * Returns: the PID of the child process in the parent, 0 in the child
+ * or a negative errno value on failure (e.g. -ENOSYS when not running
+ * under linux-user).
+ */
+QEMU_PLUGIN_API
+int qemu_plugin_user_fork(void);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

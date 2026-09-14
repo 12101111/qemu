@@ -129,3 +129,11 @@ void qemu_plugin_update_ns(const void *handle, int64_t new_time)
                          RUN_ON_CPU_HOST_ULONG(new_time));
     }
 }
+
+/*
+ * Forking the emulator is only supported for linux-user targets.
+ */
+int qemu_plugin_user_fork(void)
+{
+    return -ENOSYS;
+}

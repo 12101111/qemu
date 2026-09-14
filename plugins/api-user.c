@@ -55,3 +55,9 @@ void qemu_plugin_update_ns(const void *handle, int64_t new_time)
 {
     qemu_log_mask(LOG_UNIMP, "user-mode can't control time");
 }
+
+int qemu_plugin_user_fork(void)
+{
+    g_assert(current_cpu);
+    return qemu_user_safe_fork();
+}

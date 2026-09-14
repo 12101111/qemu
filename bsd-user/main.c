@@ -144,6 +144,16 @@ void fork_end(pid_t pid)
     end_exclusive();
 }
 
+#ifdef CONFIG_PLUGIN
+/*
+ * qemu_plugin_user_fork() is only supported under linux-user.
+ */
+int qemu_user_safe_fork(void)
+{
+    return -ENOSYS;
+}
+#endif
+
 void cpu_loop(CPUArchState *env)
 {
     target_cpu_loop(env);
